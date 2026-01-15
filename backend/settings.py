@@ -99,18 +99,25 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
 # Use DATABASE_URL from Render if available, otherwise use local PostgreSQL
-if os.getenv('DATABASE_URL'):
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if DATABASE_URL:
+    # ✅ Production / Render / Railway
     DATABASES = {
-        'default': dj_database_url.config(
-            default=os.getenv('DATABASE_URL'),
+        "default": dj_database_url.parse(
+            DATABASE_URL,
             conn_max_age=600,
             conn_health_checks=True,
         )
     }
 else:
+    # ✅ Local development fallback
     DATABASES = {
         "default": {
-            "ENGINE": "django.db.backends.postgresql",
+            "ENGINE": os.getenv(
+                "DB_ENGINE", "django.db.backends.postgresql"
+            ),
             "NAME": os.getenv("DB_NAME", "punch"),
             "USER": os.getenv("DB_USER", "postgres"),
             "PASSWORD": os.getenv("DB_PASSWORD", "1234"),
@@ -118,6 +125,7 @@ else:
             "PORT": os.getenv("DB_PORT", "5432"),
         }
     }
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
