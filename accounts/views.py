@@ -415,18 +415,17 @@ class ForgotPasswordSendOTPView(APIView):
         )
         print(f"✓ OTP saved to database (ID: {otp_record.id})")
         
-        # Send email with OTP
-        try:
-            print("=== SENDING EMAIL ===")
-            print(f"From: {settings.DEFAULT_FROM_EMAIL}")
-            print(f"To: {email}")
-            print(f"SMTP Host: {settings.EMAIL_HOST}")
-            print(f"SMTP Port: {settings.EMAIL_PORT}")
-            print(f"SMTP User: {settings.EMAIL_HOST_USER}")
-            print(f"Use TLS: {settings.EMAIL_USE_TLS}")
-            
-            subject = "Mimanasa - Password Reset OTP"
-            message = f"""
+        # Send email with OTP (with timeout protection)
+        print("=== SENDING EMAIL ===")
+        print(f"From: {settings.DEFAULT_FROM_EMAIL}")
+        print(f"To: {email}")
+        print(f"SMTP Host: {settings.EMAIL_HOST}")
+        print(f"SMTP Port: {settings.EMAIL_PORT}")
+        print(f"SMTP User: {settings.EMAIL_HOST_USER}")
+        print(f"Use TLS: {settings.EMAIL_USE_TLS}")
+        
+        subject = "Mimanasa - Password Reset OTP"
+        message = f"""
 Hello {user.username},
 
 You requested to reset your password for your Mimanasa account.
@@ -439,40 +438,45 @@ If you didn't request this, please ignore this email.
 
 Best regards,
 Mimanasa Team
-            """
+        """
+        
+        # ALWAYS print OTP to console for backup
+        print(f"\n{'='*50}")
+        print(f"🔐 OTP FOR TESTING: {otp}")
+        print(f"📧 Email: {email}")
+        print(f"{'='*50}\n")
+        
+        # Try to send email with timeout protection
+        email_sent = False
+        try:
+            import socket
+            # Set socket timeout to 10 seconds
+            socket.setdefaulttimeout(10)
             
-            # TEMPORARY: Print OTP to console for testing
-            print(f"\n{'='*50}")
-            print(f"🔐 OTP FOR TESTING: {otp}")
-            print(f"📧 Email: {email}")
-            print(f"{'='*50}\n")
-            
-            # Try to send email, but don't fail if it doesn't work
-            try:
-                result = send_mail(
-                    subject,
-                    message,
-                    settings.DEFAULT_FROM_EMAIL,
-                    [email],
-                    fail_silently=False,
-                )
+            result = send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [email],
+                fail_silently=True,  # Don't raise exception
+            )
+            if result > 0:
+                email_sent = True
                 print(f"✓ Email sent successfully! Result: {result}")
-            except Exception as email_error:
-                print(f"⚠️ Email sending failed (using console OTP instead): {email_error}")
-            
-            return Response({
-                "message": "OTP sent successfully to your email",
-                "email": email,
-                "otp_for_testing": otp  # TEMPORARY: Remove in production
-            }, status=200)
-            
-        except Exception as e:
-            print(f"ERROR sending email: {type(e).__name__}: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return Response({
-                "error": f"Failed to send email: {str(e)}"
-            }, status=500)
+        except Exception as email_error:
+            print(f"⚠️ Email sending failed: {type(email_error).__name__}: {str(email_error)}")
+            # Continue anyway - OTP is saved in database
+        finally:
+            # Reset socket timeout
+            socket.setdefaulttimeout(None)
+        
+        # Return success regardless of email status
+        return Response({
+            "message": "OTP generated successfully. Check your email or contact support.",
+            "email": email,
+            "email_sent": email_sent,
+            "otp_for_testing": otp  # For development/testing
+        }, status=200)
 
 
 class ForgotPasswordVerifyOTPView(APIView):
