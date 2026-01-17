@@ -416,13 +416,21 @@ class ForgotPasswordSendOTPView(APIView):
         print(f"✓ OTP saved to database (ID: {otp_record.id})")
         
         # Send email with OTP (with timeout protection)
-        print("=== SENDING EMAIL ===")
-        print(f"From: {settings.DEFAULT_FROM_EMAIL}")
-        print(f"To: {email}")
-        print(f"SMTP Host: {settings.EMAIL_HOST}")
-        print(f"SMTP Port: {settings.EMAIL_PORT}")
-        print(f"SMTP User: {settings.EMAIL_HOST_USER}")
-        print(f"Use TLS: {settings.EMAIL_USE_TLS}")
+        print("=== EMAIL CONFIGURATION CHECK ===")
+        print(f"EMAIL_BACKEND: {settings.EMAIL_BACKEND}")
+        print(f"EMAIL_HOST: {settings.EMAIL_HOST}")
+        print(f"EMAIL_PORT: {settings.EMAIL_PORT}")
+        print(f"EMAIL_USE_TLS: {settings.EMAIL_USE_TLS}")
+        print(f"EMAIL_HOST_USER: {settings.EMAIL_HOST_USER}")
+        print(f"EMAIL_HOST_PASSWORD: {'*' * len(settings.EMAIL_HOST_PASSWORD) if settings.EMAIL_HOST_PASSWORD else 'NOT SET'}")
+        print(f"DEFAULT_FROM_EMAIL: {settings.DEFAULT_FROM_EMAIL}")
+        print(f"To Email: {email}")
+        print("=" * 50)
+        
+        # Check if credentials are set
+        if not settings.EMAIL_HOST_USER or not settings.EMAIL_HOST_PASSWORD:
+            print("⚠️ WARNING: Email credentials not configured!")
+            print("⚠️ EMAIL_HOST_USER or EMAIL_HOST_PASSWORD is missing")
         
         subject = "Mimanasa - Password Reset OTP"
         message = f"""
@@ -442,12 +450,15 @@ Mimanasa Team
         
         # ALWAYS print OTP to console for backup
         print(f"\n{'='*50}")
-        print(f"🔐 OTP FOR TESTING: {otp}")
+        print(f"🔐 OTP FOR USER: {user.username}")
         print(f"📧 Email: {email}")
+        print(f"🔑 OTP Code: {otp}")
+        print(f"⏰ Expires: 10 minutes from now")
         print(f"{'='*50}\n")
         
         # Try to send email with timeout protection
         email_sent = False
+        email_error_msg = None
         try:
             import socket
             # Set socket timeout to 10 seconds
@@ -463,20 +474,28 @@ Mimanasa Team
             if result > 0:
                 email_sent = True
                 print(f"✓ Email sent successfully! Result: {result}")
+            else:
+                print(f"⚠️ Email sending returned 0 - may have failed")
         except Exception as email_error:
-            print(f"⚠️ Email sending failed: {type(email_error).__name__}: {str(email_error)}")
+            email_error_msg = f"{type(email_error).__name__}: {str(email_error)}"
+            print(f"⚠️ Email sending failed: {email_error_msg}")
             # Continue anyway - OTP is saved in database
         finally:
             # Reset socket timeout
             socket.setdefaulttimeout(None)
         
         # Return success regardless of email status
-        return Response({
+        response_data = {
             "message": "OTP generated successfully. Check your email or contact support.",
             "email": email,
             "email_sent": email_sent,
             "otp_for_testing": otp  # For development/testing
-        }, status=200)
+        }
+        
+        if email_error_msg:
+            response_data["email_error"] = email_error_msg
+        
+        return Response(response_data, status=200)
 
 
 class ForgotPasswordVerifyOTPView(APIView):
