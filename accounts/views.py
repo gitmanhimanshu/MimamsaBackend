@@ -665,6 +665,92 @@ class PoemDetailView(APIView):
             return Response({"error": "Poem not found"}, status=404)
 
 
+class UserPoemView(APIView):
+    """View for users to create and manage their own poems"""
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        """Get all poems by a specific user"""
+        user_id = request.query_params.get('user_id')
+        if not user_id:
+            return Response({"error": "user_id required"}, status=400)
+        
+        try:
+            from .serializers import PoemSerializer
+            poems = Poem.objects.filter(user_id=user_id, is_active=True)
+            serializer = PoemSerializer(poems, many=True)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
+    
+    def post(self, request):
+        """Create a new user poem"""
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id required"}, status=400)
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+        
+        # Create poem data
+        poem_data = {
+            'title': request.data.get('title'),
+            'content': request.data.get('content'),
+            'category': request.data.get('category'),
+            'language': request.data.get('language', 'Hindi'),
+            'background_image_url': request.data.get('background_image_url', ''),
+            'user': user_id,
+            'author': None,  # User poems don't have author
+            'is_approved': True  # Auto-approve for now, can be changed later
+        }
+        
+        from .serializers import PoemSerializer
+        serializer = PoemSerializer(data=poem_data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+
+class UserPoemDetailView(APIView):
+    """View for users to update/delete their own poems"""
+    permission_classes = [AllowAny]
+    
+    def put(self, request, pk):
+        """Update user's own poem"""
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id required"}, status=400)
+        
+        try:
+            poem = Poem.objects.get(pk=pk, user_id=user_id)
+        except Poem.DoesNotExist:
+            return Response({"error": "Poem not found or you don't have permission"}, status=404)
+        
+        from .serializers import PoemSerializer
+        serializer = PoemSerializer(poem, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
+    
+    def delete(self, request, pk):
+        """Delete user's own poem"""
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id required"}, status=400)
+        
+        try:
+            poem = Poem.objects.get(pk=pk, user_id=user_id)
+            poem.is_active = False
+            poem.save()
+            return Response({"message": "Poem deleted successfully"})
+        except Poem.DoesNotExist:
+            return Response({"error": "Poem not found or you don't have permission"}, status=404)
+
+
 
 # ============================================
 # REVIEW VIEWS

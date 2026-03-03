@@ -121,11 +121,13 @@ class PoemCategory(models.Model):
 class Poem(models.Model):
     title = models.CharField(max_length=255)
     content = models.TextField()  # The actual poem text
-    author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True, blank=True, related_name="poems")
+    author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True, blank=True, related_name="poems")  # For admin-added poems
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, null=True, blank=True, related_name="user_poems")  # For user-created poems
     category = models.ForeignKey(PoemCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name="poems")
     language = models.CharField(max_length=50, default="Hindi")
     background_image_url = models.URLField(blank=True, null=True)  # Optional background image
     is_active = models.BooleanField(default=True)
+    is_approved = models.BooleanField(default=True)  # Admin can approve user poems
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -134,6 +136,14 @@ class Poem(models.Model):
 
     def __str__(self):
         return self.title
+
+    def get_author_name(self):
+        """Returns author name (either from Author model or AppUser)"""
+        if self.author:
+            return self.author.name
+        elif self.user:
+            return self.user.username
+        return "Unknown"
 
     def average_rating(self):
         reviews = self.poem_reviews.all()

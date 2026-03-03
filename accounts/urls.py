@@ -19,6 +19,8 @@ from .views import (
     PoemCategoryListView,
     PoemListView,
     PoemDetailView,
+    UserPoemView,
+    UserPoemDetailView,
     BookReviewListView,
     BookReviewDetailView,
     PoemReviewListView,
@@ -54,6 +56,10 @@ urlpatterns = [
     path("poem-categories/", PoemCategoryListView.as_view()),
     path("poems/", PoemListView.as_view()),
     path("poems/<int:pk>/", PoemDetailView.as_view()),
+    
+    # User Poem Endpoints (for users to create their own poems)
+    path("user-poems/", UserPoemView.as_view()),
+    path("user-poems/<int:pk>/", UserPoemDetailView.as_view()),
     
     # Review Endpoints
     path("books/<int:book_id>/reviews/", BookReviewListView.as_view()),

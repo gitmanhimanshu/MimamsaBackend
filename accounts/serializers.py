@@ -63,16 +63,31 @@ class PoemCategorySerializer(serializers.ModelSerializer):
 
 
 class PoemSerializer(serializers.ModelSerializer):
-    author_name = serializers.CharField(source="author.name", read_only=True)
-    author_photo = serializers.URLField(source="author.photo_url", read_only=True)
+    author_name = serializers.SerializerMethodField()
+    author_photo = serializers.SerializerMethodField()
     category_name = serializers.CharField(source="category.name", read_only=True)
     category_icon = serializers.CharField(source="category.icon", read_only=True)
     average_rating = serializers.SerializerMethodField()
     review_count = serializers.SerializerMethodField()
+    user_name = serializers.CharField(source="user.username", read_only=True)
+    is_user_poem = serializers.SerializerMethodField()
     
     class Meta:
         model = Poem
         fields = "__all__"
+    
+    def get_author_name(self, obj):
+        return obj.get_author_name()
+    
+    def get_author_photo(self, obj):
+        if obj.author:
+            return obj.author.photo_url
+        elif obj.user:
+            return obj.user.profile_photo
+        return None
+    
+    def get_is_user_poem(self, obj):
+        return obj.user is not None
     
     def get_average_rating(self, obj):
         return obj.average_rating()
