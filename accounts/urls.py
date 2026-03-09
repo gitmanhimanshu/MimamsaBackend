@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import (
+    HealthCheckView,
     AppRegisterView, 
     AppLoginView,
     AppProfileUpdateView,
@@ -28,6 +29,9 @@ from .views import (
 )
 
 urlpatterns = [
+    # Health Check
+    path("health/", HealthCheckView.as_view(), name="health_check"),
+    
     path("app/register/", AppRegisterView.as_view()),
     path("app/login/", AppLoginView.as_view()),
     path("app/profile/<int:pk>/", AppProfileUpdateView.as_view()),

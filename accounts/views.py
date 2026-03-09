@@ -7,6 +7,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.core.mail import send_mail
 from django.conf import settings
 import cloudinary.uploader
+from datetime import datetime
 
 from .models import AppUser, Category, Author, Book, PasswordResetOTP, PoemCategory, Poem, BookReview, PoemReview
 from .serializers import (
@@ -17,6 +18,24 @@ from .serializers import (
     BookSerializer
 )
 from django.db import models
+
+
+class HealthCheckView(APIView):
+    """
+    Health check endpoint to verify server is running
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"✅ Health Check - Server is running! Time: {current_time}")
+        
+        return Response({
+            "status": "success",
+            "message": "Server is running successfully! 🚀",
+            "timestamp": current_time,
+            "server": "Mimanasa Backend API"
+        }, status=status.HTTP_200_OK)
 
 
 class AppRegisterView(APIView):
