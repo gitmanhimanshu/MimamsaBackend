@@ -8,6 +8,7 @@ from .views import (
     AuthorListView,
     AuthorDetailView,
     GenreChoicesView,
+    PoemGenreChoicesView,
     BookListView,
     BookDetailView,
     UploadImageView,
@@ -17,7 +18,6 @@ from .views import (
     ForgotPasswordSendOTPView,
     ForgotPasswordVerifyOTPView,
     ForgotPasswordResetView,
-    PoemCategoryListView,
     PoemListView,
     PoemDetailView,
     UserPoemView,
@@ -45,6 +45,7 @@ urlpatterns = [
     path("authors/", AuthorListView.as_view()),
     path("authors/<int:pk>/", AuthorDetailView.as_view()),
     path("genres/", GenreChoicesView.as_view()),
+    path("poem-genres/", PoemGenreChoicesView.as_view()),
     path("books/", BookListView.as_view()),
     path("books/<int:pk>/", BookDetailView.as_view()),
     
@@ -57,7 +58,6 @@ urlpatterns = [
     path("fix-pdf-access/", FixPDFAccessView.as_view()),
     
     # Poem Endpoints
-    path("poem-categories/", PoemCategoryListView.as_view()),
     path("poems/", PoemListView.as_view()),
     path("poems/<int:pk>/", PoemDetailView.as_view()),
     

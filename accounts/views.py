@@ -9,7 +9,7 @@ from django.conf import settings
 import cloudinary.uploader
 from datetime import datetime
 
-from .models import AppUser, Category, Author, Book, PasswordResetOTP, PoemCategory, Poem, BookReview, PoemReview
+from .models import AppUser, Category, Author, Book, PasswordResetOTP, Poem, BookReview, PoemReview
 from .serializers import (
     AppUserRegisterSerializer,
     AppUserUpdateSerializer,
@@ -171,6 +171,14 @@ class GenreChoicesView(APIView):
     def get(self, request):
         """Return all available genre choices"""
         genres = [{"value": choice[0], "label": choice[1]} for choice in Book.GENRE_CHOICES]
+        return Response(genres)
+
+
+class PoemGenreChoicesView(APIView):
+    def get(self, request):
+        """Return all available poem genre choices"""
+        from .models import Poem
+        genres = [{"value": choice[0], "label": choice[1]} for choice in Poem.GENRE_CHOICES]
         return Response(genres)
 
 
@@ -539,39 +547,6 @@ class ForgotPasswordResetView(APIView):
             return Response({"error": "Invalid OTP"}, status=400)
 
 
-# ============================================
-# POEM VIEWS
-# ============================================
-
-class PoemCategoryListView(APIView):
-    permission_classes = [AllowAny]
-    
-    def get(self, request):
-        """Get all active poem categories"""
-        from .serializers import PoemCategorySerializer
-        categories = PoemCategory.objects.filter(is_active=True)
-        serializer = PoemCategorySerializer(categories, many=True)
-        return Response(serializer.data)
-    
-    def post(self, request):
-        """Create new poem category (admin only)"""
-        user_id = request.data.get("user_id")
-        if not user_id:
-            return Response({"error": "user_id required"}, status=400)
-        
-        try:
-            user = AppUser.objects.get(id=user_id)
-            if not user.is_admin:
-                return Response({"error": "Admin access required"}, status=403)
-        except AppUser.DoesNotExist:
-            return Response({"error": "User not found"}, status=404)
-        
-        from .serializers import PoemCategorySerializer
-        serializer = PoemCategorySerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=201)
-        return Response(serializer.errors, status=400)
 
 
 class PoemListView(APIView):
@@ -583,10 +558,15 @@ class PoemListView(APIView):
         
         poems = Poem.objects.filter(is_active=True)
         
-        # Filter by category
-        category_id = request.query_params.get('category')
-        if category_id:
-            poems = poems.filter(category_id=category_id)
+        # Filter by category (string-based)
+        category = request.query_params.get('category')
+        if category:
+            poems = poems.filter(category=category)
+        
+        # Filter by genre (string-based)
+        genre = request.query_params.get('genre')
+        if genre:
+            poems = poems.filter(genre=genre)
         
         # Filter by author
         author_id = request.query_params.get('author')
@@ -713,11 +693,12 @@ class UserPoemView(APIView):
         except AppUser.DoesNotExist:
             return Response({"error": "User not found"}, status=404)
         
-        # Create poem data
+        # Create poem data - category is now a string field
         poem_data = {
             'title': request.data.get('title'),
             'content': request.data.get('content'),
-            'category': request.data.get('category'),
+            'category': request.data.get('category'),  # Direct string value
+            'genre': request.data.get('genre', 'poetry'),
             'language': request.data.get('language', 'Hindi'),
             'background_image_url': request.data.get('background_image_url', ''),
             'user': user_id,

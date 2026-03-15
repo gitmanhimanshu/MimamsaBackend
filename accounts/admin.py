@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AppUser, Category, Author, Book, PoemCategory, Poem, BookReview, PoemReview
+from .models import AppUser, Category, Author, Book, Poem, BookReview, PoemReview
 
 @admin.register(AppUser)
 class AppUserAdmin(admin.ModelAdmin):
@@ -19,10 +19,6 @@ class BookAdmin(admin.ModelAdmin):
     list_display = ("title", "author", "category", "genre", "is_paid", "price", "is_active")
     list_filter = ("category", "genre", "is_paid", "is_active")
 
-@admin.register(PoemCategory)
-class PoemCategoryAdmin(admin.ModelAdmin):
-    list_display = ("name", "icon", "is_active", "created_at")
-    list_filter = ("is_active",)
 
 @admin.register(Poem)
 class PoemAdmin(admin.ModelAdmin):

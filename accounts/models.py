@@ -104,26 +104,34 @@ class Book(models.Model):
         return self.book_reviews.count()
 
 
-class PoemCategory(models.Model):
-    name = models.CharField(max_length=100, unique=True)
-    description = models.TextField(blank=True)
-    icon = models.CharField(max_length=10, default="📝")  # Emoji icon
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        verbose_name_plural = "Poem Categories"
-
-    def __str__(self):
-        return self.name
 
 
 class Poem(models.Model):
+    GENRE_CHOICES = [
+        ('poetry', 'Poetry'),
+        ('classical_poetry', 'Classical Poetry'),
+        ('modern_poetry', 'Modern Poetry'),
+        ('ghazal', 'Ghazal'),
+        ('free_verse', 'Free Verse'),
+    ]
+    
+    CATEGORY_CHOICES = [
+        ('love', 'प्रेम कविता'),
+        ('nature', 'प्रकृति'),
+        ('patriotic', 'देशभक्ति'),
+        ('spiritual', 'आध्यात्मिक'),
+        ('social', 'सामाजिक'),
+        ('motivational', 'प्रेरणादायक'),
+        ('sad', 'दुःख'),
+        ('funny', 'हास्य'),
+    ]
+    
     title = models.CharField(max_length=255)
     content = models.TextField()  # The actual poem text
     author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True, blank=True, related_name="poems")  # For admin-added poems
     user = models.ForeignKey(AppUser, on_delete=models.CASCADE, null=True, blank=True, related_name="user_poems")  # For user-created poems
-    category = models.ForeignKey(PoemCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name="poems")
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, blank=True, null=True)  # Changed to CharField
+    genre = models.CharField(max_length=50, choices=GENRE_CHOICES, default='poetry')
     language = models.CharField(max_length=50, default="Hindi")
     background_image_url = models.URLField(blank=True, null=True)  # Optional background image
     is_active = models.BooleanField(default=True)
@@ -144,6 +152,16 @@ class Poem(models.Model):
         elif self.user:
             return self.user.username
         return "Unknown"
+    
+    @property
+    def genre_display(self):
+        """Returns human-readable genre name"""
+        return dict(self.GENRE_CHOICES).get(self.genre, self.genre)
+    
+    @property
+    def category_display(self):
+        """Returns human-readable category name"""
+        return dict(self.CATEGORY_CHOICES).get(self.category, self.category)
 
     def average_rating(self):
         reviews = self.poem_reviews.all()

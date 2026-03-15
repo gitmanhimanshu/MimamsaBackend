@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import AppUser, Category, Author, Book, PoemCategory, Poem, BookReview, PoemReview
+from .models import AppUser, Category, Author, Book, Poem, BookReview, PoemReview
 from django.contrib.auth.hashers import make_password
 
 class AppUserRegisterSerializer(serializers.ModelSerializer):
@@ -51,22 +51,13 @@ class BookSerializer(serializers.ModelSerializer):
         return obj.review_count()
 
 
-class PoemCategorySerializer(serializers.ModelSerializer):
-    poems_count = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = PoemCategory
-        fields = "__all__"
-    
-    def get_poems_count(self, obj):
-        return obj.poems.filter(is_active=True).count()
 
 
 class PoemSerializer(serializers.ModelSerializer):
     author_name = serializers.SerializerMethodField()
     author_photo = serializers.SerializerMethodField()
-    category_name = serializers.CharField(source="category.name", read_only=True)
-    category_icon = serializers.CharField(source="category.icon", read_only=True)
+    category_display = serializers.ReadOnlyField()
+    genre_display = serializers.ReadOnlyField()
     average_rating = serializers.SerializerMethodField()
     review_count = serializers.SerializerMethodField()
     user_name = serializers.CharField(source="user.username", read_only=True)
