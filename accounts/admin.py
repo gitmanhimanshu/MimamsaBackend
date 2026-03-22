@@ -39,3 +39,24 @@ class PoemReviewAdmin(admin.ModelAdmin):
     search_fields = ("poem__title", "user__username", "comment")
 
 
+
+
+from .models import ShortStory, Audiobook, Video
+
+@admin.register(ShortStory)
+class ShortStoryAdmin(admin.ModelAdmin):
+    list_display = ("title", "author", "user", "genre", "reading_time", "is_active", "created_at")
+    list_filter = ("genre", "language", "is_active", "is_approved")
+    search_fields = ("title", "content", "author__name", "user__username")
+
+@admin.register(Audiobook)
+class AudiobookAdmin(admin.ModelAdmin):
+    list_display = ("title", "author", "narrator", "genre", "duration", "is_paid", "is_active", "created_at")
+    list_filter = ("genre", "language", "is_paid", "is_active")
+    search_fields = ("title", "description", "author__name", "narrator")
+
+@admin.register(Video)
+class VideoAdmin(admin.ModelAdmin):
+    list_display = ("title", "author", "category", "duration", "is_active", "created_at")
+    list_filter = ("category", "language", "is_active")
+    search_fields = ("title", "description", "author__name")

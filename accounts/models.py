@@ -89,7 +89,7 @@ class Book(models.Model):
     price = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     published_year = models.IntegerField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)  # Added index
 
     def __str__(self):
         return self.title
@@ -136,11 +136,14 @@ class Poem(models.Model):
     background_image_url = models.URLField(blank=True, null=True)  # Optional background image
     is_active = models.BooleanField(default=True)
     is_approved = models.BooleanField(default=True)  # Admin can approve user poems
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)  # Added index
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at', 'is_active', 'is_approved']),
+        ]
 
     def __str__(self):
         return self.title
@@ -205,3 +208,120 @@ class PoemReview(models.Model):
         return f"{self.user.username} - {self.poem.title} ({self.rating}★)"
 
 
+
+
+class ShortStory(models.Model):
+    GENRE_CHOICES = [
+        ('fiction', 'Fiction'),
+        ('non_fiction', 'Non-Fiction'),
+        ('mystery', 'Mystery'),
+        ('romance', 'Romance'),
+        ('horror', 'Horror'),
+        ('comedy', 'Comedy'),
+        ('drama', 'Drama'),
+        ('fantasy', 'Fantasy'),
+        ('thriller', 'Thriller'),
+    ]
+    
+    title = models.CharField(max_length=255)
+    content = models.TextField()  # The actual story text
+    author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True, blank=True, related_name="short_stories")
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, null=True, blank=True, related_name="user_stories")
+    genre = models.CharField(max_length=50, choices=GENRE_CHOICES, default='fiction')
+    language = models.CharField(max_length=50, default="Hindi")
+    cover_image_url = models.URLField(blank=True, null=True)
+    reading_time = models.IntegerField(default=5, help_text="Estimated reading time in minutes")
+    is_active = models.BooleanField(default=True)
+    is_approved = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)  # Added index
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name_plural = "Short Stories"
+        indexes = [
+            models.Index(fields=['-created_at', 'is_active', 'is_approved']),
+        ]
+
+    def __str__(self):
+        return self.title
+
+    def get_author_name(self):
+        """Returns author name (either from Author model or AppUser)"""
+        if self.author:
+            return self.author.name
+        elif self.user:
+            return self.user.username
+        return "Unknown"
+
+
+class Audiobook(models.Model):
+    GENRE_CHOICES = [
+        ('fiction', 'Fiction'),
+        ('non_fiction', 'Non-Fiction'),
+        ('biography', 'Biography'),
+        ('self_help', 'Self Help'),
+        ('business', 'Business'),
+        ('history', 'History'),
+        ('science', 'Science'),
+        ('poetry', 'Poetry'),
+        ('drama', 'Drama'),
+    ]
+    
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True, blank=True, related_name="audiobooks")
+    narrator = models.CharField(max_length=150, blank=True, help_text="Name of the narrator")
+    genre = models.CharField(max_length=50, choices=GENRE_CHOICES, default='fiction')
+    cover_image_url = models.URLField(blank=True, null=True)
+    audio_url = models.URLField(help_text="URL to the audio file")
+    duration = models.IntegerField(default=0, help_text="Duration in minutes")
+    language = models.CharField(max_length=50, default="Hindi")
+    is_paid = models.BooleanField(default=False)
+    price = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)  # Added index
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at', 'is_active']),
+        ]
+
+    def __str__(self):
+        return self.title
+
+
+class Video(models.Model):
+    CATEGORY_CHOICES = [
+        ('literature', 'Literature'),
+        ('poetry_reading', 'Poetry Reading'),
+        ('author_interview', 'Author Interview'),
+        ('book_review', 'Book Review'),
+        ('writing_tips', 'Writing Tips'),
+        ('storytelling', 'Storytelling'),
+        ('documentary', 'Documentary'),
+        ('educational', 'Educational'),
+    ]
+    
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True, blank=True, related_name="videos")
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, default='literature')
+    thumbnail_url = models.URLField(blank=True, null=True)
+    video_url = models.URLField(help_text="URL to the video file or YouTube link")
+    duration = models.IntegerField(default=0, help_text="Duration in minutes")
+    language = models.CharField(max_length=50, default="Hindi")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)  # Added index
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at', 'is_active']),
+        ]
+
+    def __str__(self):
+        return self.title

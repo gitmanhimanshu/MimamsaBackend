@@ -7,6 +7,7 @@ from .views import (
     CategoryListView,
     AuthorListView,
     AuthorDetailView,
+    AuthorDetailUpdateView,
     GenreChoicesView,
     PoemGenreChoicesView,
     BookListView,
@@ -25,12 +26,22 @@ from .views import (
     BookReviewListView,
     BookReviewDetailView,
     PoemReviewListView,
-    PoemReviewDetailView
+    PoemReviewDetailView,
+    UnifiedFeedView,
+    ShortStoryListView,
+    ShortStoryDetailView,
+    AudiobookListView,
+    AudiobookDetailView,
+    VideoListView,
+    VideoDetailView
 )
 
 urlpatterns = [
     # Health Check
     path("health/", HealthCheckView.as_view(), name="health_check"),
+    
+    # Unified Feed
+    path("feed/", UnifiedFeedView.as_view(), name="unified_feed"),
     
     path("app/register/", AppRegisterView.as_view()),
     path("app/login/", AppLoginView.as_view()),
@@ -43,7 +54,7 @@ urlpatterns = [
     
     path("categories/", CategoryListView.as_view()),
     path("authors/", AuthorListView.as_view()),
-    path("authors/<int:pk>/", AuthorDetailView.as_view()),
+    path("authors/<int:pk>/", AuthorDetailUpdateView.as_view()),
     path("genres/", GenreChoicesView.as_view()),
     path("poem-genres/", PoemGenreChoicesView.as_view()),
     path("books/", BookListView.as_view()),
@@ -70,4 +81,16 @@ urlpatterns = [
     path("books/<int:book_id>/reviews/user/", BookReviewDetailView.as_view()),
     path("poems/<int:poem_id>/reviews/", PoemReviewListView.as_view()),
     path("poems/<int:poem_id>/reviews/user/", PoemReviewDetailView.as_view()),
+    
+    # Short Story Endpoints
+    path("stories/", ShortStoryListView.as_view()),
+    path("stories/<int:pk>/", ShortStoryDetailView.as_view()),
+    
+    # Audiobook Endpoints
+    path("audiobooks/", AudiobookListView.as_view()),
+    path("audiobooks/<int:pk>/", AudiobookDetailView.as_view()),
+    
+    # Video Endpoints
+    path("videos/", VideoListView.as_view()),
+    path("videos/<int:pk>/", VideoDetailView.as_view()),
 ]

@@ -107,3 +107,48 @@ class PoemReviewSerializer(serializers.ModelSerializer):
         model = PoemReview
         fields = "__all__"
         read_only_fields = ('created_at', 'updated_at')
+
+
+
+from .models import ShortStory, Audiobook, Video
+
+class ShortStorySerializer(serializers.ModelSerializer):
+    author_name = serializers.SerializerMethodField()
+    author_photo = serializers.SerializerMethodField()
+    is_user_story = serializers.SerializerMethodField()
+    user_name = serializers.CharField(source="user.username", read_only=True)
+    
+    class Meta:
+        model = ShortStory
+        fields = "__all__"
+    
+    def get_author_name(self, obj):
+        return obj.get_author_name()
+    
+    def get_author_photo(self, obj):
+        if obj.author:
+            return obj.author.photo_url
+        elif obj.user:
+            return obj.user.profile_photo
+        return None
+    
+    def get_is_user_story(self, obj):
+        return obj.user is not None
+
+
+class AudiobookSerializer(serializers.ModelSerializer):
+    author_name = serializers.CharField(source="author.name", read_only=True)
+    author_photo = serializers.URLField(source="author.photo_url", read_only=True)
+    
+    class Meta:
+        model = Audiobook
+        fields = "__all__"
+
+
+class VideoSerializer(serializers.ModelSerializer):
+    author_name = serializers.CharField(source="author.name", read_only=True)
+    author_photo = serializers.URLField(source="author.photo_url", read_only=True)
+    
+    class Meta:
+        model = Video
+        fields = "__all__"

@@ -6,10 +6,12 @@ from rest_framework.permissions import AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.core.mail import send_mail
 from django.conf import settings
+from django.views.decorators.cache import cache_page
+from django.utils.decorators import method_decorator
 import cloudinary.uploader
 from datetime import datetime
 
-from .models import AppUser, Category, Author, Book, PasswordResetOTP, Poem, BookReview, PoemReview
+from .models import AppUser, Category, Author, Book, PasswordResetOTP, Poem, BookReview, PoemReview, ShortStory, Audiobook, Video
 from .serializers import (
     AppUserRegisterSerializer,
     AppUserUpdateSerializer,
@@ -898,3 +900,454 @@ class PoemReviewDetailView(APIView):
             return Response({"message": "Review deleted successfully"})
         except PoemReview.DoesNotExist:
             return Response({"error": "Review not found"}, status=404)
+
+
+
+@method_decorator(cache_page(60 * 5), name='dispatch')  # Cache for 5 minutes
+class UnifiedFeedView(APIView):
+    """Get all content types (Books, Poems, Short Stories, Audiobooks, Videos) sorted by creation date - OPTIMIZED with RAW SQL"""
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        from django.db import connection
+        
+        # Get pagination parameters
+        limit = int(request.query_params.get('limit', 20))
+        offset = int(request.query_params.get('offset', 0))
+        
+        # Use raw SQL with UNION for maximum performance
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT 'book' as type, b.id, b.title, 
+                       COALESCE(a.name, 'Unknown') as author_name,
+                       b.cover_image_url as cover_image,
+                       b.created_at
+                FROM accounts_book b
+                LEFT JOIN accounts_author a ON b.author_id = a.id
+                WHERE b.is_active IS TRUE
+                
+                UNION ALL
+                
+                SELECT 'poem' as type, p.id, p.title,
+                       COALESCE(a.name, u.username, 'Unknown') as author_name,
+                       p.background_image_url as cover_image,
+                       p.created_at
+                FROM accounts_poem p
+                LEFT JOIN accounts_author a ON p.author_id = a.id
+                LEFT JOIN accounts_appuser u ON p.user_id = u.id
+                WHERE p.is_active IS TRUE AND p.is_approved IS TRUE
+                
+                UNION ALL
+                
+                SELECT 'story' as type, s.id, s.title,
+                       COALESCE(a.name, u.username, 'Unknown') as author_name,
+                       s.cover_image_url as cover_image,
+                       s.created_at
+                FROM accounts_shortstory s
+                LEFT JOIN accounts_author a ON s.author_id = a.id
+                LEFT JOIN accounts_appuser u ON s.user_id = u.id
+                WHERE s.is_active IS TRUE AND s.is_approved IS TRUE
+                
+                UNION ALL
+                
+                SELECT 'audiobook' as type, ab.id, ab.title,
+                       COALESCE(a.name, 'Unknown') as author_name,
+                       ab.cover_image_url as cover_image,
+                       ab.created_at
+                FROM accounts_audiobook ab
+                LEFT JOIN accounts_author a ON ab.author_id = a.id
+                WHERE ab.is_active IS TRUE
+                
+                UNION ALL
+                
+                SELECT 'video' as type, v.id, v.title,
+                       COALESCE(a.name, 'Unknown') as author_name,
+                       v.thumbnail_url as cover_image,
+                       v.created_at
+                FROM accounts_video v
+                LEFT JOIN accounts_author a ON v.author_id = a.id
+                WHERE v.is_active IS TRUE
+                
+                ORDER BY created_at DESC
+                LIMIT %s OFFSET %s
+            """, [limit, offset])
+            
+            columns = [col[0] for col in cursor.description]
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            # Get total count
+            cursor.execute("""
+                SELECT COUNT(*) FROM (
+                    SELECT id FROM accounts_book WHERE is_active IS TRUE
+                    UNION ALL
+                    SELECT id FROM accounts_poem WHERE is_active IS TRUE AND is_approved IS TRUE
+                    UNION ALL
+                    SELECT id FROM accounts_shortstory WHERE is_active IS TRUE AND is_approved IS TRUE
+                    UNION ALL
+                    SELECT id FROM accounts_audiobook WHERE is_active IS TRUE
+                    UNION ALL
+                    SELECT id FROM accounts_video WHERE is_active IS TRUE
+                ) as total
+            """)
+            total = cursor.fetchone()[0]
+        
+        # Convert datetime objects to ISO format
+        for item in results:
+            if item['created_at']:
+                item['created_at'] = item['created_at'].isoformat()
+        
+        return Response({
+            'total': total,
+            'items': results
+        })
+
+
+class AuthorDetailUpdateView(APIView):
+    """Get and update author details"""
+    permission_classes = [AllowAny]
+    
+    def get(self, request, pk):
+        try:
+            author = Author.objects.get(pk=pk)
+            from .serializers import AuthorSerializer
+            return Response(AuthorSerializer(author).data)
+        except Author.DoesNotExist:
+            return Response({"error": "Author not found"}, status=404)
+    
+    def put(self, request, pk):
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id required"}, status=400)
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+            if not user.is_admin:
+                return Response({"error": "Admin access required"}, status=403)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+        
+        try:
+            author = Author.objects.get(pk=pk)
+            from .serializers import AuthorSerializer
+            serializer = AuthorSerializer(author, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=400)
+        except Author.DoesNotExist:
+            return Response({"error": "Author not found"}, status=404)
+
+
+# ============================================
+# SHORT STORY VIEWS
+# ============================================
+
+class ShortStoryListView(APIView):
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        """Get all active short stories"""
+        from .serializers import ShortStorySerializer
+        stories = ShortStory.objects.filter(is_active=True, is_approved=True)
+        
+        # Filter by genre
+        genre = request.query_params.get('genre')
+        if genre:
+            stories = stories.filter(genre=genre)
+        
+        # Filter by author
+        author_id = request.query_params.get('author')
+        if author_id:
+            stories = stories.filter(author_id=author_id)
+        
+        serializer = ShortStorySerializer(stories, many=True)
+        return Response(serializer.data)
+    
+    def post(self, request):
+        """Create new short story (admin only)"""
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id required"}, status=400)
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+            if not user.is_admin:
+                return Response({"error": "Admin access required"}, status=403)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+        
+        from .serializers import ShortStorySerializer
+        serializer = ShortStorySerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+
+class ShortStoryDetailView(APIView):
+    permission_classes = [AllowAny]
+    
+    def get(self, request, pk):
+        """Get single short story"""
+        try:
+            from .serializers import ShortStorySerializer
+            story = ShortStory.objects.get(pk=pk, is_active=True)
+            serializer = ShortStorySerializer(story)
+            return Response(serializer.data)
+        except ShortStory.DoesNotExist:
+            return Response({"error": "Story not found"}, status=404)
+    
+    def put(self, request, pk):
+        """Update short story (admin only)"""
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id required"}, status=400)
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+            if not user.is_admin:
+                return Response({"error": "Admin access required"}, status=403)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+        
+        try:
+            from .serializers import ShortStorySerializer
+            story = ShortStory.objects.get(pk=pk)
+            serializer = ShortStorySerializer(story, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=400)
+        except ShortStory.DoesNotExist:
+            return Response({"error": "Story not found"}, status=404)
+    
+    def delete(self, request, pk):
+        """Delete short story (admin only)"""
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id required"}, status=400)
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+            if not user.is_admin:
+                return Response({"error": "Admin access required"}, status=403)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+        
+        try:
+            story = ShortStory.objects.get(pk=pk)
+            story.is_active = False
+            story.save()
+            return Response({"message": "Story deleted successfully"})
+        except ShortStory.DoesNotExist:
+            return Response({"error": "Story not found"}, status=404)
+
+
+# ============================================
+# AUDIOBOOK VIEWS
+# ============================================
+
+class AudiobookListView(APIView):
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        """Get all active audiobooks"""
+        from .serializers import AudiobookSerializer
+        audiobooks = Audiobook.objects.filter(is_active=True)
+        
+        # Filter by genre
+        genre = request.query_params.get('genre')
+        if genre:
+            audiobooks = audiobooks.filter(genre=genre)
+        
+        # Filter by author
+        author_id = request.query_params.get('author')
+        if author_id:
+            audiobooks = audiobooks.filter(author_id=author_id)
+        
+        serializer = AudiobookSerializer(audiobooks, many=True)
+        return Response(serializer.data)
+    
+    def post(self, request):
+        """Create new audiobook (admin only)"""
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id required"}, status=400)
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+            if not user.is_admin:
+                return Response({"error": "Admin access required"}, status=403)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+        
+        from .serializers import AudiobookSerializer
+        serializer = AudiobookSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+
+class AudiobookDetailView(APIView):
+    permission_classes = [AllowAny]
+    
+    def get(self, request, pk):
+        """Get single audiobook"""
+        try:
+            from .serializers import AudiobookSerializer
+            audiobook = Audiobook.objects.get(pk=pk, is_active=True)
+            serializer = AudiobookSerializer(audiobook)
+            return Response(serializer.data)
+        except Audiobook.DoesNotExist:
+            return Response({"error": "Audiobook not found"}, status=404)
+    
+    def put(self, request, pk):
+        """Update audiobook (admin only)"""
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id required"}, status=400)
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+            if not user.is_admin:
+                return Response({"error": "Admin access required"}, status=403)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+        
+        try:
+            from .serializers import AudiobookSerializer
+            audiobook = Audiobook.objects.get(pk=pk)
+            serializer = AudiobookSerializer(audiobook, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=400)
+        except Audiobook.DoesNotExist:
+            return Response({"error": "Audiobook not found"}, status=404)
+    
+    def delete(self, request, pk):
+        """Delete audiobook (admin only)"""
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id required"}, status=400)
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+            if not user.is_admin:
+                return Response({"error": "Admin access required"}, status=403)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+        
+        try:
+            audiobook = Audiobook.objects.get(pk=pk)
+            audiobook.is_active = False
+            audiobook.save()
+            return Response({"message": "Audiobook deleted successfully"})
+        except Audiobook.DoesNotExist:
+            return Response({"error": "Audiobook not found"}, status=404)
+
+
+# ============================================
+# VIDEO VIEWS
+# ============================================
+
+class VideoListView(APIView):
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        """Get all active videos"""
+        from .serializers import VideoSerializer
+        videos = Video.objects.filter(is_active=True)
+        
+        # Filter by category
+        category = request.query_params.get('category')
+        if category:
+            videos = videos.filter(category=category)
+        
+        # Filter by author
+        author_id = request.query_params.get('author')
+        if author_id:
+            videos = videos.filter(author_id=author_id)
+        
+        serializer = VideoSerializer(videos, many=True)
+        return Response(serializer.data)
+    
+    def post(self, request):
+        """Create new video (admin only)"""
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id required"}, status=400)
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+            if not user.is_admin:
+                return Response({"error": "Admin access required"}, status=403)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+        
+        from .serializers import VideoSerializer
+        serializer = VideoSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+
+class VideoDetailView(APIView):
+    permission_classes = [AllowAny]
+    
+    def get(self, request, pk):
+        """Get single video"""
+        try:
+            from .serializers import VideoSerializer
+            video = Video.objects.get(pk=pk, is_active=True)
+            serializer = VideoSerializer(video)
+            return Response(serializer.data)
+        except Video.DoesNotExist:
+            return Response({"error": "Video not found"}, status=404)
+    
+    def put(self, request, pk):
+        """Update video (admin only)"""
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id required"}, status=400)
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+            if not user.is_admin:
+                return Response({"error": "Admin access required"}, status=403)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+        
+        try:
+            from .serializers import VideoSerializer
+            video = Video.objects.get(pk=pk)
+            serializer = VideoSerializer(video, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=400)
+        except Video.DoesNotExist:
+            return Response({"error": "Video not found"}, status=404)
+    
+    def delete(self, request, pk):
+        """Delete video (admin only)"""
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id required"}, status=400)
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+            if not user.is_admin:
+                return Response({"error": "Admin access required"}, status=403)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+        
+        try:
+            video = Video.objects.get(pk=pk)
+            video.is_active = False
+            video.save()
+            return Response({"message": "Video deleted successfully"})
+        except Video.DoesNotExist:
+            return Response({"error": "Video not found"}, status=404)
