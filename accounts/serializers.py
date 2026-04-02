@@ -152,3 +152,15 @@ class VideoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Video
         fields = "__all__"
+
+
+
+from .models import Image
+
+class ImageSerializer(serializers.ModelSerializer):
+    author_name = serializers.CharField(source="author.name", read_only=True)
+    author_photo = serializers.URLField(source="author.photo_url", read_only=True)
+    
+    class Meta:
+        model = Image
+        fields = "__all__"

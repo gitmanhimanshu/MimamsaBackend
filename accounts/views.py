@@ -11,7 +11,7 @@ from django.utils.decorators import method_decorator
 import cloudinary.uploader
 from datetime import datetime
 
-from .models import AppUser, Category, Author, Book, PasswordResetOTP, Poem, BookReview, PoemReview, ShortStory, Audiobook, Video
+from .models import AppUser, Category, Author, Book, PasswordResetOTP, Poem, BookReview, PoemReview, ShortStory, Audiobook, Video, Image
 from .serializers import (
     AppUserRegisterSerializer,
     AppUserUpdateSerializer,
@@ -968,6 +968,16 @@ class UnifiedFeedView(APIView):
                 LEFT JOIN accounts_author a ON v.author_id = a.id
                 WHERE v.is_active IS TRUE
                 
+                UNION ALL
+                
+                SELECT 'image' as type, i.id, i.title,
+                       COALESCE(a.name, 'Unknown') as author_name,
+                       i.image_url as cover_image,
+                       i.created_at
+                FROM accounts_image i
+                LEFT JOIN accounts_author a ON i.author_id = a.id
+                WHERE i.is_active IS TRUE
+                
                 ORDER BY created_at DESC
                 LIMIT %s OFFSET %s
             """, [limit, offset])
@@ -987,6 +997,8 @@ class UnifiedFeedView(APIView):
                     SELECT id FROM accounts_audiobook WHERE is_active IS TRUE
                     UNION ALL
                     SELECT id FROM accounts_video WHERE is_active IS TRUE
+                    UNION ALL
+                    SELECT id FROM accounts_image WHERE is_active IS TRUE
                 ) as total
             """)
             total = cursor.fetchone()[0]
@@ -1351,3 +1363,109 @@ class VideoDetailView(APIView):
             return Response({"message": "Video deleted successfully"})
         except Video.DoesNotExist:
             return Response({"error": "Video not found"}, status=404)
+
+
+
+# ============================================
+# IMAGE VIEWS
+# ============================================
+
+class ImageListView(APIView):
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        """Get all active images"""
+        from .serializers import ImageSerializer
+        images = Image.objects.filter(is_active=True)
+        
+        # Filter by category
+        category = request.query_params.get('category')
+        if category:
+            images = images.filter(category=category)
+        
+        # Filter by author
+        author_id = request.query_params.get('author')
+        if author_id:
+            images = images.filter(author_id=author_id)
+        
+        serializer = ImageSerializer(images, many=True)
+        return Response(serializer.data)
+    
+    def post(self, request):
+        """Create new image (admin only)"""
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id required"}, status=400)
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+            if not user.is_admin:
+                return Response({"error": "Admin access required"}, status=403)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+        
+        from .serializers import ImageSerializer
+        serializer = ImageSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+
+class ImageDetailView(APIView):
+    permission_classes = [AllowAny]
+    
+    def get(self, request, pk):
+        """Get single image"""
+        try:
+            from .serializers import ImageSerializer
+            image = Image.objects.get(pk=pk, is_active=True)
+            serializer = ImageSerializer(image)
+            return Response(serializer.data)
+        except Image.DoesNotExist:
+            return Response({"error": "Image not found"}, status=404)
+    
+    def put(self, request, pk):
+        """Update image (admin only)"""
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id required"}, status=400)
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+            if not user.is_admin:
+                return Response({"error": "Admin access required"}, status=403)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+        
+        try:
+            from .serializers import ImageSerializer
+            image = Image.objects.get(pk=pk)
+            serializer = ImageSerializer(image, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=400)
+        except Image.DoesNotExist:
+            return Response({"error": "Image not found"}, status=404)
+    
+    def delete(self, request, pk):
+        """Delete image (admin only)"""
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id required"}, status=400)
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+            if not user.is_admin:
+                return Response({"error": "Admin access required"}, status=403)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+        
+        try:
+            image = Image.objects.get(pk=pk)
+            image.is_active = False
+            image.save()
+            return Response({"message": "Image deleted successfully"})
+        except Image.DoesNotExist:
+            return Response({"error": "Image not found"}, status=404)

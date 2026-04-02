@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AppUser, Category, Author, Book, Poem, BookReview, PoemReview
+from .models import AppUser,Image, Category, Author, Book, Poem, BookReview, PoemReview
 
 @admin.register(AppUser)
 class AppUserAdmin(admin.ModelAdmin):
@@ -60,3 +60,12 @@ class VideoAdmin(admin.ModelAdmin):
     list_display = ("title", "author", "category", "duration", "is_active", "created_at")
     list_filter = ("category", "language", "is_active")
     search_fields = ("title", "description", "author__name")
+
+
+
+@admin.register(Image)
+class ImageAdmin(admin.ModelAdmin):
+    list_display = ('title', 'author', 'category', 'language', 'is_active', 'created_at')
+    list_filter = ('category', 'language', 'is_active', 'created_at')
+    search_fields = ('title', 'description', 'tags')
+    readonly_fields = ('created_at', 'updated_at')

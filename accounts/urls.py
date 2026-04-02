@@ -33,7 +33,9 @@ from .views import (
     AudiobookListView,
     AudiobookDetailView,
     VideoListView,
-    VideoDetailView
+    VideoDetailView,
+    ImageListView,
+    ImageDetailView
 )
 
 urlpatterns = [
@@ -93,4 +95,8 @@ urlpatterns = [
     # Video Endpoints
     path("videos/", VideoListView.as_view()),
     path("videos/<int:pk>/", VideoDetailView.as_view()),
+    
+    # Image Endpoints
+    path("images/", ImageListView.as_view()),
+    path("images/<int:pk>/", ImageDetailView.as_view()),
 ]

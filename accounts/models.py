@@ -325,3 +325,37 @@ class Video(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class Image(models.Model):
+    CATEGORY_CHOICES = [
+        ('book_cover', 'Book Cover'),
+        ('author_photo', 'Author Photo'),
+        ('illustration', 'Illustration'),
+        ('artwork', 'Artwork'),
+        ('calligraphy', 'Calligraphy'),
+        ('manuscript', 'Manuscript'),
+        ('historical', 'Historical'),
+        ('cultural', 'Cultural'),
+        ('other', 'Other'),
+    ]
+    
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True, blank=True, related_name="images")
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, default='other')
+    image_url = models.URLField(help_text="URL to the image file")
+    tags = models.CharField(max_length=255, blank=True, help_text="Comma-separated tags")
+    language = models.CharField(max_length=50, default="Hindi")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at', 'is_active']),
+        ]
+
+    def __str__(self):
+        return self.title
