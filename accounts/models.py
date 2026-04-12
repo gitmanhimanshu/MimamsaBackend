@@ -127,6 +127,7 @@ class Poem(models.Model):
     ]
     
     title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True, help_text="Short description or summary of the poem")
     content = models.TextField()  # The actual poem text
     author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True, blank=True, related_name="poems")  # For admin-added poems
     user = models.ForeignKey(AppUser, on_delete=models.CASCADE, null=True, blank=True, related_name="user_poems")  # For user-created poems

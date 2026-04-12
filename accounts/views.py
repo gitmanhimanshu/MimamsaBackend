@@ -922,7 +922,10 @@ class UnifiedFeedView(APIView):
             cursor.execute("""
                 SELECT 'book' as type, b.id, b.title, 
                        COALESCE(a.name, 'Unknown') as author_name,
+                       a.photo_url as author_photo,
                        b.cover_image_url as cover_image,
+                       b.description,
+                       CAST(NULL AS TEXT) as content,
                        b.created_at
                 FROM accounts_book b
                 LEFT JOIN accounts_author a ON b.author_id = a.id
@@ -932,7 +935,10 @@ class UnifiedFeedView(APIView):
                 
                 SELECT 'poem' as type, p.id, p.title,
                        COALESCE(a.name, u.username, 'Unknown') as author_name,
+                       COALESCE(a.photo_url, u.profile_photo) as author_photo,
                        p.background_image_url as cover_image,
+                       p.description,
+                       p.content,
                        p.created_at
                 FROM accounts_poem p
                 LEFT JOIN accounts_author a ON p.author_id = a.id
@@ -943,7 +949,10 @@ class UnifiedFeedView(APIView):
                 
                 SELECT 'story' as type, s.id, s.title,
                        COALESCE(a.name, u.username, 'Unknown') as author_name,
+                       COALESCE(a.photo_url, u.profile_photo) as author_photo,
                        s.cover_image_url as cover_image,
+                       CAST(NULL AS TEXT) as description,
+                       CAST(NULL AS TEXT) as content,
                        s.created_at
                 FROM accounts_shortstory s
                 LEFT JOIN accounts_author a ON s.author_id = a.id
@@ -954,7 +963,10 @@ class UnifiedFeedView(APIView):
                 
                 SELECT 'audiobook' as type, ab.id, ab.title,
                        COALESCE(a.name, 'Unknown') as author_name,
+                       a.photo_url as author_photo,
                        ab.cover_image_url as cover_image,
+                       ab.description,
+                       CAST(NULL AS TEXT) as content,
                        ab.created_at
                 FROM accounts_audiobook ab
                 LEFT JOIN accounts_author a ON ab.author_id = a.id
@@ -964,7 +976,10 @@ class UnifiedFeedView(APIView):
                 
                 SELECT 'video' as type, v.id, v.title,
                        COALESCE(a.name, 'Unknown') as author_name,
+                       a.photo_url as author_photo,
                        v.thumbnail_url as cover_image,
+                       v.description,
+                       CAST(NULL AS TEXT) as content,
                        v.created_at
                 FROM accounts_video v
                 LEFT JOIN accounts_author a ON v.author_id = a.id
@@ -974,7 +989,10 @@ class UnifiedFeedView(APIView):
                 
                 SELECT 'image' as type, i.id, i.title,
                        COALESCE(a.name, 'Unknown') as author_name,
+                       a.photo_url as author_photo,
                        i.image_url as cover_image,
+                       i.description,
+                       CAST(NULL AS TEXT) as content,
                        i.created_at
                 FROM accounts_image i
                 LEFT JOIN accounts_author a ON i.author_id = a.id
