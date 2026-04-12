@@ -35,7 +35,11 @@ from .views import (
     VideoListView,
     VideoDetailView,
     ImageListView,
-    ImageDetailView
+    ImageDetailView,
+    LikeToggleView,
+    LikeListView,
+    CommentListView,
+    CommentDetailView
 )
 
 urlpatterns = [
@@ -99,4 +103,10 @@ urlpatterns = [
     # Image Endpoints
     path("images/", ImageListView.as_view()),
     path("images/<int:pk>/", ImageDetailView.as_view()),
+    
+    # Like & Comment Endpoints
+    path("likes/toggle/", LikeToggleView.as_view()),
+    path("likes/", LikeListView.as_view()),
+    path("comments/", CommentListView.as_view()),
+    path("comments/<int:pk>/", CommentDetailView.as_view()),
 ]

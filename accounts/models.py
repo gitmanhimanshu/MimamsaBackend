@@ -359,3 +359,60 @@ class Image(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class Like(models.Model):
+    """Universal Like model for all content types"""
+    CONTENT_TYPE_CHOICES = [
+        ('book', 'Book'),
+        ('poem', 'Poem'),
+        ('story', 'Short Story'),
+        ('audiobook', 'Audiobook'),
+        ('video', 'Video'),
+        ('image', 'Image'),
+    ]
+    
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="likes")
+    content_type = models.CharField(max_length=20, choices=CONTENT_TYPE_CHOICES)
+    content_id = models.IntegerField()  # ID of the liked content
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        unique_together = ('user', 'content_type', 'content_id')  # One like per user per content
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['content_type', 'content_id']),
+            models.Index(fields=['user', 'content_type']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} liked {self.content_type} #{self.content_id}"
+
+
+class Comment(models.Model):
+    """Universal Comment model for all content types"""
+    CONTENT_TYPE_CHOICES = [
+        ('book', 'Book'),
+        ('poem', 'Poem'),
+        ('story', 'Short Story'),
+        ('audiobook', 'Audiobook'),
+        ('video', 'Video'),
+        ('image', 'Image'),
+    ]
+    
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="comments")
+    content_type = models.CharField(max_length=20, choices=CONTENT_TYPE_CHOICES)
+    content_id = models.IntegerField()  # ID of the commented content
+    text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['content_type', 'content_id', '-created_at']),
+            models.Index(fields=['user', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} commented on {self.content_type} #{self.content_id}"

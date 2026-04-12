@@ -11,13 +11,15 @@ from django.utils.decorators import method_decorator
 import cloudinary.uploader
 from datetime import datetime
 
-from .models import AppUser, Category, Author, Book, PasswordResetOTP, Poem, BookReview, PoemReview, ShortStory, Audiobook, Video, Image
+from .models import AppUser, Category, Author, Book, PasswordResetOTP, Poem, BookReview, PoemReview, ShortStory, Audiobook, Video, Image, Like, Comment
 from .serializers import (
     AppUserRegisterSerializer,
     AppUserUpdateSerializer,
     CategorySerializer, 
     AuthorSerializer, 
-    BookSerializer
+    BookSerializer,
+    LikeSerializer,
+    CommentSerializer
 )
 from django.db import models
 
@@ -903,7 +905,6 @@ class PoemReviewDetailView(APIView):
 
 
 
-@method_decorator(cache_page(60 * 5), name='dispatch')  # Cache for 5 minutes
 class UnifiedFeedView(APIView):
     """Get all content types (Books, Poems, Short Stories, Audiobooks, Videos) sorted by creation date - OPTIMIZED with RAW SQL"""
     permission_classes = [AllowAny]
@@ -914,6 +915,7 @@ class UnifiedFeedView(APIView):
         # Get pagination parameters
         limit = int(request.query_params.get('limit', 20))
         offset = int(request.query_params.get('offset', 0))
+        user_id = request.query_params.get('user_id')  # Optional: to check if user liked
         
         # Use raw SQL with UNION for maximum performance
         with connection.cursor() as cursor:
@@ -1003,8 +1005,32 @@ class UnifiedFeedView(APIView):
             """)
             total = cursor.fetchone()[0]
         
-        # Convert datetime objects to ISO format
+        # Add like and comment counts for each item
         for item in results:
+            # Get like count
+            like_count = Like.objects.filter(
+                content_type=item['type'],
+                content_id=item['id']
+            ).count()
+            item['like_count'] = like_count
+            
+            # Check if current user liked this
+            item['user_liked'] = False
+            if user_id:
+                item['user_liked'] = Like.objects.filter(
+                    content_type=item['type'],
+                    content_id=item['id'],
+                    user_id=user_id
+                ).exists()
+            
+            # Get comment count
+            comment_count = Comment.objects.filter(
+                content_type=item['type'],
+                content_id=item['id']
+            ).count()
+            item['comment_count'] = comment_count
+            
+            # Convert datetime objects to ISO format
             if item['created_at']:
                 item['created_at'] = item['created_at'].isoformat()
         
@@ -1469,3 +1495,219 @@ class ImageDetailView(APIView):
             return Response({"message": "Image deleted successfully"})
         except Image.DoesNotExist:
             return Response({"error": "Image not found"}, status=404)
+
+
+
+# ============================================
+# LIKE & COMMENT VIEWS
+# ============================================
+
+class LikeToggleView(APIView):
+    """Toggle like on any content type"""
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        """Toggle like (add if not exists, remove if exists)"""
+        user_id = request.data.get('user_id')
+        content_type = request.data.get('content_type')
+        content_id = request.data.get('content_id')
+        
+        if not all([user_id, content_type, content_id]):
+            return Response(
+                {"error": "user_id, content_type, and content_id are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if like already exists
+        existing_like = Like.objects.filter(
+            user=user,
+            content_type=content_type,
+            content_id=content_id
+        ).first()
+        
+        if existing_like:
+            # Unlike
+            existing_like.delete()
+            return Response({
+                "message": "Unliked successfully",
+                "liked": False
+            }, status=status.HTTP_200_OK)
+        else:
+            # Like
+            like = Like.objects.create(
+                user=user,
+                content_type=content_type,
+                content_id=content_id
+            )
+            serializer = LikeSerializer(like)
+            return Response({
+                "message": "Liked successfully",
+                "liked": True,
+                "like": serializer.data
+            }, status=status.HTTP_201_CREATED)
+
+
+class LikeListView(APIView):
+    """Get all likes for a specific content"""
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        """Get likes for specific content"""
+        content_type = request.query_params.get('content_type')
+        content_id = request.query_params.get('content_id')
+        user_id = request.query_params.get('user_id')  # Optional: check if user liked
+        
+        if not all([content_type, content_id]):
+            return Response(
+                {"error": "content_type and content_id are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        likes = Like.objects.filter(
+            content_type=content_type,
+            content_id=content_id
+        )
+        
+        # Check if current user liked this content
+        user_liked = False
+        if user_id:
+            user_liked = likes.filter(user_id=user_id).exists()
+        
+        serializer = LikeSerializer(likes, many=True)
+        return Response({
+            "count": likes.count(),
+            "user_liked": user_liked,
+            "likes": serializer.data
+        }, status=status.HTTP_200_OK)
+
+
+class CommentListView(APIView):
+    """Get and create comments for any content type"""
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        """Get all comments for specific content"""
+        content_type = request.query_params.get('content_type')
+        content_id = request.query_params.get('content_id')
+        
+        if not all([content_type, content_id]):
+            return Response(
+                {"error": "content_type and content_id are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        comments = Comment.objects.filter(
+            content_type=content_type,
+            content_id=content_id
+        ).order_by('-created_at')
+        
+        serializer = CommentSerializer(comments, many=True)
+        return Response({
+            "count": comments.count(),
+            "comments": serializer.data
+        }, status=status.HTTP_200_OK)
+    
+    def post(self, request):
+        """Create a new comment"""
+        user_id = request.data.get('user_id')
+        content_type = request.data.get('content_type')
+        content_id = request.data.get('content_id')
+        text = request.data.get('text')
+        
+        if not all([user_id, content_type, content_id, text]):
+            return Response(
+                {"error": "user_id, content_type, content_id, and text are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        comment = Comment.objects.create(
+            user=user,
+            content_type=content_type,
+            content_id=content_id,
+            text=text
+        )
+        
+        serializer = CommentSerializer(comment)
+        return Response({
+            "message": "Comment added successfully",
+            "comment": serializer.data
+        }, status=status.HTTP_201_CREATED)
+
+
+class CommentDetailView(APIView):
+    """Update and delete specific comment"""
+    permission_classes = [AllowAny]
+    
+    def put(self, request, pk):
+        """Update a comment"""
+        user_id = request.data.get('user_id')
+        text = request.data.get('text')
+        
+        if not all([user_id, text]):
+            return Response(
+                {"error": "user_id and text are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            comment = Comment.objects.get(id=pk)
+        except Comment.DoesNotExist:
+            return Response({"error": "Comment not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if user owns this comment
+        if comment.user.id != int(user_id):
+            return Response(
+                {"error": "You can only edit your own comments"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        comment.text = text
+        comment.save()
+        
+        serializer = CommentSerializer(comment)
+        return Response({
+            "message": "Comment updated successfully",
+            "comment": serializer.data
+        }, status=status.HTTP_200_OK)
+    
+    def delete(self, request, pk):
+        """Delete a comment"""
+        user_id = request.data.get('user_id')
+        
+        if not user_id:
+            return Response(
+                {"error": "user_id is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            comment = Comment.objects.get(id=pk)
+        except Comment.DoesNotExist:
+            return Response({"error": "Comment not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if user owns this comment or is admin
+        try:
+            user = AppUser.objects.get(id=user_id)
+            if comment.user.id != int(user_id) and not user.is_admin:
+                return Response(
+                    {"error": "You can only delete your own comments"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        comment.delete()
+        return Response(
+            {"message": "Comment deleted successfully"},
+            status=status.HTTP_200_OK
+        )

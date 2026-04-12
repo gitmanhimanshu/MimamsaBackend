@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AppUser,Image, Category, Author, Book, Poem, BookReview, PoemReview
+from .models import AppUser,Image, Category, Author, Book, Poem, BookReview, PoemReview, Like, Comment
 
 @admin.register(AppUser)
 class AppUserAdmin(admin.ModelAdmin):
@@ -69,3 +69,22 @@ class ImageAdmin(admin.ModelAdmin):
     list_filter = ('category', 'language', 'is_active', 'created_at')
     search_fields = ('title', 'description', 'tags')
     readonly_fields = ('created_at', 'updated_at')
+
+
+@admin.register(Like)
+class LikeAdmin(admin.ModelAdmin):
+    list_display = ('user', 'content_type', 'content_id', 'created_at')
+    list_filter = ('content_type', 'created_at')
+    search_fields = ('user__username', 'user__email')
+    readonly_fields = ('created_at',)
+
+@admin.register(Comment)
+class CommentAdmin(admin.ModelAdmin):
+    list_display = ('user', 'content_type', 'content_id', 'text_preview', 'created_at')
+    list_filter = ('content_type', 'created_at')
+    search_fields = ('user__username', 'user__email', 'text')
+    readonly_fields = ('created_at', 'updated_at')
+    
+    def text_preview(self, obj):
+        return obj.text[:50] + '...' if len(obj.text) > 50 else obj.text
+    text_preview.short_description = 'Comment'

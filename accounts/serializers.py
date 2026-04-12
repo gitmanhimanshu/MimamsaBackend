@@ -164,3 +164,25 @@ class ImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Image
         fields = "__all__"
+
+
+from .models import Like, Comment
+
+class LikeSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source="user.username", read_only=True)
+    user_photo = serializers.URLField(source="user.profile_photo", read_only=True)
+    
+    class Meta:
+        model = Like
+        fields = "__all__"
+        read_only_fields = ('created_at',)
+
+
+class CommentSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source="user.username", read_only=True)
+    user_photo = serializers.URLField(source="user.profile_photo", read_only=True)
+    
+    class Meta:
+        model = Comment
+        fields = "__all__"
+        read_only_fields = ('created_at', 'updated_at')
