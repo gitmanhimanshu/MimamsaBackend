@@ -94,9 +94,9 @@ urlpatterns = [
     path("poems/<int:poem_id>/reviews/", PoemReviewListView.as_view()),
     path("poems/<int:poem_id>/reviews/user/", PoemReviewDetailView.as_view()),
     
-    # Short Story Endpoints
-    path("stories/", ShortStoryListView.as_view()),
-    path("stories/<int:pk>/", ShortStoryDetailView.as_view()),
+    # Short Story Endpoints (literary content)
+    path("short-stories/", ShortStoryListView.as_view()),
+    path("short-stories/<int:pk>/", ShortStoryDetailView.as_view()),
     
     # Audiobook Endpoints
     path("audiobooks/", AudiobookListView.as_view()),
@@ -120,7 +120,7 @@ urlpatterns = [
     path("bookmarks/toggle/", BookmarkToggleView.as_view()),
     path("bookmarks/", BookmarkListView.as_view()),
     
-    # Story Endpoints (Facebook/Instagram style)
+    # Social Story Endpoints (Facebook/Instagram style ephemeral stories)
     path("stories/", StoryListView.as_view()),
     path("stories/create/", StoryCreateView.as_view()),
     path("stories/<int:pk>/", StoryDetailView.as_view()),

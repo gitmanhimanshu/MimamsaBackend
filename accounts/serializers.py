@@ -219,6 +219,15 @@ class StorySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ('created_at', 'expires_at', 'viewers', 'user')
     
+    def create(self, validated_data):
+        """Override create to call model save() which sets expires_at"""
+        user = validated_data.pop('user', None)
+        instance = Story(**validated_data)
+        if user:
+            instance.user = user
+        instance.save()  # This triggers model's save() which sets expires_at
+        return instance
+    
     def get_viewer_count(self, obj):
         return obj.viewer_count()
     
