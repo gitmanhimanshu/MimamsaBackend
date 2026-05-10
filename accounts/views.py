@@ -8,10 +8,11 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.views.decorators.cache import cache_page
 from django.utils.decorators import method_decorator
+from django.utils import timezone
 import cloudinary.uploader
 from datetime import datetime
 
-from .models import AppUser, Category, Author, Book, PasswordResetOTP, Poem, BookReview, PoemReview, ShortStory, Audiobook, Video, Image, Like, Comment
+from .models import AppUser, Category, Author, Book, PasswordResetOTP, Poem, BookReview, PoemReview, ShortStory, Audiobook, Video, Image, Like, Comment, Bookmark, Story
 from .serializers import (
     AppUserRegisterSerializer,
     AppUserUpdateSerializer,
@@ -19,7 +20,9 @@ from .serializers import (
     AuthorSerializer, 
     BookSerializer,
     LikeSerializer,
-    CommentSerializer
+    CommentSerializer,
+    BookmarkSerializer,
+    StorySerializer
 )
 from django.db import models
 
@@ -952,7 +955,7 @@ class UnifiedFeedView(APIView):
                        COALESCE(a.photo_url, u.profile_photo) as author_photo,
                        s.cover_image_url as cover_image,
                        CAST(NULL AS TEXT) as description,
-                       CAST(NULL AS TEXT) as content,
+                       LEFT(s.content, 2000) as content,
                        s.created_at
                 FROM accounts_shortstory s
                 LEFT JOIN accounts_author a ON s.author_id = a.id
@@ -1036,6 +1039,15 @@ class UnifiedFeedView(APIView):
             item['user_liked'] = False
             if user_id:
                 item['user_liked'] = Like.objects.filter(
+                    content_type=item['type'],
+                    content_id=item['id'],
+                    user_id=user_id
+                ).exists()
+            
+            # Check if current user saved this
+            item['user_saved'] = False
+            if user_id:
+                item['user_saved'] = Bookmark.objects.filter(
                     content_type=item['type'],
                     content_id=item['id'],
                     user_id=user_id
@@ -1729,3 +1741,255 @@ class CommentDetailView(APIView):
             {"message": "Comment deleted successfully"},
             status=status.HTTP_200_OK
         )
+
+
+# ============================================
+# BOOKMARK / SAVE LATER VIEWS
+# ============================================
+
+class BookmarkToggleView(APIView):
+    """Toggle bookmark (save/unsave) on any content type"""
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        print(f"🔖 BOOKMARK TOGGLE — request.data: {request.data}")
+        print(f"🔖 BOOKMARK TOGGLE — request.headers.get('Content-Type'): {request.headers.get('Content-Type')}")
+        
+        user_id = request.data.get('user_id')
+        content_type = request.data.get('content_type')
+        content_id = request.data.get('content_id')
+        
+        print(f"🔖 BOOKMARK TOGGLE — extracted: user_id={user_id}, content_type={content_type}, content_id={content_id}")
+        
+        if not all([user_id, content_type, content_id]):
+            return Response(
+                {"error": "user_id, content_type, and content_id are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if bookmark already exists
+        existing = Bookmark.objects.filter(
+            user=user,
+            content_type=content_type,
+            content_id=content_id
+        ).first()
+        
+        if existing:
+            # Unsave
+            existing.delete()
+            return Response({
+                "message": "Removed from saved",
+                "saved": False
+            }, status=status.HTTP_200_OK)
+        else:
+            # Save
+            bookmark = Bookmark.objects.create(
+                user=user,
+                content_type=content_type,
+                content_id=content_id
+            )
+            serializer = BookmarkSerializer(bookmark)
+            return Response({
+                "message": "Saved successfully",
+                "saved": True,
+                "bookmark": serializer.data
+            }, status=status.HTTP_201_CREATED)
+
+
+class BookmarkListView(APIView):
+    """Get all saved items for a user"""
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        user_id = request.query_params.get('user_id')
+        content_type = request.query_params.get('content_type')  # Optional filter
+        
+        if not user_id:
+            return Response(
+                {"error": "user_id is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        bookmarks = Bookmark.objects.filter(user=user)
+        
+        if content_type:
+            bookmarks = bookmarks.filter(content_type=content_type)
+        
+        serializer = BookmarkSerializer(bookmarks, many=True)
+        return Response({
+            "count": bookmarks.count(),
+            "bookmarks": serializer.data
+        }, status=status.HTTP_200_OK)
+
+
+# ============================================
+# STORY VIEWS (Facebook/Instagram style)
+# ============================================
+
+class StoryListView(APIView):
+    """Get all active stories grouped by user (latest story per user shown in bar)"""
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        from django.utils import timezone
+        from django.db.models import Max
+        
+        # Get all non-expired active stories
+        stories = Story.objects.filter(
+            is_active=True,
+            expires_at__gt=timezone.now()
+        ).select_related('user').order_by('-created_at')
+        
+        # Get user_id for is_viewed check
+        user_id = request.query_params.get('user_id')
+        
+        # Group by user - get the latest story per user for the bar
+        # But also return all stories for the viewer
+        latest_story_ids = Story.objects.filter(
+            is_active=True,
+            expires_at__gt=timezone.now()
+        ).values('user').annotate(latest_id=Max('id')).values_list('latest_id', flat=True)
+        
+        bar_stories = Story.objects.filter(id__in=latest_story_ids).select_related('user').order_by('-created_at')
+        
+        serializer = StorySerializer(
+            bar_stories, 
+            many=True, 
+            context={'request': type('obj', (object,), {'user_id': user_id})()}
+        )
+        
+        # Also return ALL stories for the full viewer
+        all_stories_serializer = StorySerializer(
+            stories,
+            many=True,
+            context={'request': type('obj', (object,), {'user_id': user_id})()}
+        )
+        
+        return Response({
+            "bar_stories": serializer.data,
+            "all_stories": all_stories_serializer.data,
+            "count": stories.count()
+        }, status=status.HTTP_200_OK)
+
+
+class StoryCreateView(APIView):
+    """Create a new story (user only)"""
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        user_id = request.data.get('user_id')
+        if not user_id:
+            return Response({"error": "user_id required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            user = AppUser.objects.get(id=user_id)
+        except AppUser.DoesNotExist:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Limit to 10 active stories per user
+        active_count = Story.objects.filter(
+            user=user, 
+            is_active=True,
+            expires_at__gt=timezone.now()
+        ).count()
+        
+        if active_count >= 10:
+            return Response(
+                {"error": "Maximum 10 active stories allowed. Delete old ones first."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = StorySerializer(data=request.data)
+        if serializer.is_valid():
+            try:
+                story = serializer.save(user=user)
+                return Response({
+                    "message": "Story created successfully",
+                    "story": StorySerializer(story).data
+                }, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                import traceback
+                print("STORY CREATE ERROR:", str(e))
+                print(traceback.format_exc())
+                return Response({
+                    "error": "Server error creating story",
+                    "detail": str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class StoryDetailView(APIView):
+    """Get story details and mark as viewed"""
+    permission_classes = [AllowAny]
+    
+    def get(self, request, pk):
+        from django.utils import timezone
+        
+        try:
+            story = Story.objects.select_related('user').get(pk=pk, is_active=True)
+            if story.is_expired():
+                return Response({"error": "Story has expired"}, status=status.HTTP_410_GONE)
+        except Story.DoesNotExist:
+            return Response({"error": "Story not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Mark as viewed
+        user_id = request.query_params.get('user_id')
+        if user_id:
+            try:
+                viewer = AppUser.objects.get(id=user_id)
+                if viewer != story.user:
+                    story.viewers.add(viewer)
+            except AppUser.DoesNotExist:
+                pass
+        
+        serializer = StorySerializer(story, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    def delete(self, request, pk):
+        """Delete own story"""
+        user_id = request.data.get('user_id')
+        if not user_id:
+            return Response({"error": "user_id required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            story = Story.objects.get(pk=pk, user_id=user_id)
+            story.is_active = False
+            story.save()
+            return Response({"message": "Story deleted successfully"}, status=status.HTTP_200_OK)
+        except Story.DoesNotExist:
+            return Response({"error": "Story not found or unauthorized"}, status=status.HTTP_404_NOT_FOUND)
+
+
+class UserStoriesView(APIView):
+    """Get all stories by a specific user"""
+    permission_classes = [AllowAny]
+    
+    def get(self, request, user_id):
+        from django.utils import timezone
+        
+        stories = Story.objects.filter(
+            user_id=user_id,
+            is_active=True,
+            expires_at__gt=timezone.now()
+        ).select_related('user').order_by('-created_at')
+        
+        viewer_id = request.query_params.get('viewer_id')
+        serializer = StorySerializer(
+            stories, 
+            many=True,
+            context={'request': type('obj', (object,), {'user_id': viewer_id})()}
+        )
+        return Response({
+            "count": stories.count(),
+            "stories": serializer.data
+        }, status=status.HTTP_200_OK)

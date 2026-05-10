@@ -39,7 +39,13 @@ from .views import (
     LikeToggleView,
     LikeListView,
     CommentListView,
-    CommentDetailView
+    CommentDetailView,
+    BookmarkToggleView,
+    BookmarkListView,
+    StoryListView,
+    StoryCreateView,
+    StoryDetailView,
+    UserStoriesView
 )
 
 urlpatterns = [
@@ -109,4 +115,14 @@ urlpatterns = [
     path("likes/", LikeListView.as_view()),
     path("comments/", CommentListView.as_view()),
     path("comments/<int:pk>/", CommentDetailView.as_view()),
+    
+    # Bookmark / Save Later Endpoints
+    path("bookmarks/toggle/", BookmarkToggleView.as_view()),
+    path("bookmarks/", BookmarkListView.as_view()),
+    
+    # Story Endpoints (Facebook/Instagram style)
+    path("stories/", StoryListView.as_view()),
+    path("stories/create/", StoryCreateView.as_view()),
+    path("stories/<int:pk>/", StoryDetailView.as_view()),
+    path("stories/user/<int:user_id>/", UserStoriesView.as_view()),
 ]

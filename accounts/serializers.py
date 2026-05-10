@@ -166,7 +166,17 @@ class ImageSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-from .models import Like, Comment
+from .models import Like, Comment, Bookmark
+
+class BookmarkSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source="user.username", read_only=True)
+    user_photo = serializers.URLField(source="user.profile_photo", read_only=True)
+    
+    class Meta:
+        model = Bookmark
+        fields = "__all__"
+        read_only_fields = ('created_at',)
+
 
 class LikeSerializer(serializers.ModelSerializer):
     user_name = serializers.CharField(source="user.username", read_only=True)
@@ -186,3 +196,43 @@ class CommentSerializer(serializers.ModelSerializer):
         model = Comment
         fields = "__all__"
         read_only_fields = ('created_at', 'updated_at')
+
+
+from .models import Story
+
+class StorySerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source="user.username", read_only=True)
+    user_photo = serializers.URLField(source="user.profile_photo", read_only=True)
+    image_url = serializers.URLField(required=False, allow_blank=True)
+    viewer_count = serializers.SerializerMethodField()
+    is_viewed = serializers.SerializerMethodField()
+    time_left = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Story
+        fields = [
+            'id', 'user', 'user_name', 'user_photo',
+            'image_url', 'caption', 'background_color', 'text_color', 'font_style',
+            'created_at', 'expires_at', 'is_active',
+            'viewer_count', 'is_viewed', 'time_left',
+            'viewers'
+        ]
+        read_only_fields = ('created_at', 'expires_at', 'viewers', 'user')
+    
+    def get_viewer_count(self, obj):
+        return obj.viewer_count()
+    
+    def get_is_viewed(self, obj):
+        request = self.context.get('request')
+        if request and hasattr(request, 'user_id'):
+            return obj.viewers.filter(id=request.user_id).exists()
+        return False
+    
+    def get_time_left(self, obj):
+        from django.utils import timezone
+        remaining = obj.expires_at - timezone.now()
+        hours = int(remaining.total_seconds() // 3600)
+        minutes = int((remaining.total_seconds() % 3600) // 60)
+        if hours > 0:
+            return f"{hours}h {minutes}m"
+        return f"{minutes}m"
